@@ -38,7 +38,7 @@ const CAT_LABEL = { activity: '日常の活動', exercise: '息が弾む運動',
 
 // ===== 保存と読み込み =====
 function defaultData() {
-  return { profile: null, days: {}, favorites: [], customExercises: [], lastBackup: null, createdAt: new Date().toISOString() };
+  return { profile: null, days: {}, favorites: [], mealSets: [], customExercises: [], lastBackup: null, createdAt: new Date().toISOString() };
 }
 function load() {
   try {
@@ -446,7 +446,8 @@ function renderDay() {
         <input type="number" inputmode="numeric" pattern="[0-9]*" id="mk-${mk}" placeholder="kcal">
         <button class="btn" data-act="mealAdd" data-m="${mk}">追加</button>
       </div>
-      <button class="btn sub" data-act="openFav" data-m="${mk}">★ よく食べるものから追加</button>`;
+      <button class="btn sub" data-act="openFav" data-m="${mk}">★ よく食べるもの・セットから追加</button>
+      ${items.length >= 2 ? `<button class="btn line" data-act="setFromMeal" data-m="${mk}">この${ml}をセットに登録</button>` : ''}`;
   }).join('');
 
   view.innerHTML = `
@@ -786,6 +787,8 @@ function renderSettings() {
       <button class="btn line" data-act="import">書き出したファイルを読み込む</button>
     </div>
 
+    ${setsCardHtml()}
+
     <div class="card">
       <h2>★ よく食べるもの</h2>
       <p class="small">1日の記録画面で、食事の ☆ を押すと登録できます。</p>
@@ -817,13 +820,55 @@ function renderSettings() {
     <p class="small" style="text-align:center">データは外部に送信されません</p>`;
 }
 
+// ===== いつもの食事セット =====
+function setKcal(st) { return st.items.reduce((a, it) => a + it.kcal, 0); }
+function setDraft() { if (!state.setDraft) state.setDraft = { name: '', items: [] }; return state.setDraft; }
+function setsCardHtml() {
+  const d = setDraft();
+  return `
+    <div class="card">
+      <h2>🍱 いつもの食事セット</h2>
+      <p class="small">何品かをまとめて登録し、記録画面から1回押すだけで追加できます。</p>
+      <ul class="items">
+        ${data.mealSets.length ? data.mealSets.map((st, i) => `
+          <li><span class="nm">${esc(st.name)}<br><span class="small">${st.items.map(it => esc(it.name) + ' ' + fmt(it.kcal)).join('・')}</span></span>
+          <span class="kc">${fmt(setKcal(st))} kcal</span>
+          <button class="iconbtn" data-act="setDel" data-i="${i}">×</button></li>`).join('') : '<li class="muted">まだありません</li>'}
+      </ul>
+      <h3>新しいセットを作る</h3>
+      <label class="f" style="margin-top:4px">セットの名前</label>
+      <input type="text" data-draft="name" value="${esc(d.name)}" placeholder="例：いつもの朝食">
+      <label class="f">中身</label>
+      <ul class="items">
+        ${d.items.map((it, i) => `<li><span class="nm">${esc(it.name)}</span><span class="kc">${fmt(it.kcal)} kcal</span>
+          <button class="iconbtn" data-act="draftDel" data-i="${i}">×</button></li>`).join('')}
+      </ul>
+      <div class="addrow">
+        <input type="text" id="dn" placeholder="品名">
+        <input type="number" inputmode="numeric" pattern="[0-9]*" id="dk" placeholder="kcal">
+        <button class="btn" data-act="draftAdd">追加</button>
+      </div>
+      ${data.favorites.length ? `<p class="small" style="margin:8px 0 4px">よく食べるものから入れる</p>
+        <div class="exgrid">${data.favorites.map((f, i) => `<button class="choice" data-act="draftFav" data-i="${i}">${esc(f.name)}<span class="ex">${fmt(f.kcal)} kcal</span></button>`).join('')}</div>` : ''}
+      ${d.items.length ? `<p style="margin:8px 0 0">合計 <b>${fmt(setKcal(d))} kcal</b></p>` : ''}
+      <button class="btn" data-act="setSave">このセットを保存</button>
+    </div>`;
+}
+
 // ===== よく食べるもの（下から出る小窓） =====
 function openSheet(meal) {
   state.sheetMeal = meal;
   const sh = document.getElementById('sheet');
   const ml = MEALS.find(x => x[0] === meal)[1];
   sh.innerHTML = `<div class="panel">
-    <h2>★ よく食べるもの → ${ml}に追加</h2>
+    <h2>${ml}に追加</h2>
+    <h3 style="margin:4px 0 6px;font-size:15px">🍱 いつもの食事セット</h3>
+    ${data.mealSets.length
+      ? data.mealSets.map((st, i) => `<button class="choice" style="width:100%;margin-bottom:6px" data-act="setUse" data-i="${i}">
+          <span style="display:flex;justify-content:space-between"><span>${esc(st.name)}</span><b>${fmt(setKcal(st))} kcal</b></span>
+          <span class="ex">${st.items.map(it => esc(it.name)).join('・')}</span></button>`).join('')
+      : '<p class="small">まだありません。設定画面か、2品以上記録した食事の「セットに登録」から作れます。</p>'}
+    <h3 style="margin:12px 0 6px;font-size:15px">★ よく食べるもの</h3>
     ${data.favorites.length
       ? data.favorites.map((f, i) => `<button class="choice" style="width:100%;margin-bottom:6px;display:flex;justify-content:space-between" data-act="favUse" data-i="${i}"><span>${esc(f.name)}</span><b>${fmt(f.kcal)} kcal</b></button>`).join('')
       : '<p class="muted">まだ登録がありません。食事の横の ☆ を押すと登録できます。</p>'}
@@ -878,6 +923,51 @@ const actions = {
   },
   closeSheet() { closeSheet(); },
   favDel(el) { data.favorites.splice(Number(el.dataset.i), 1); save(); keepScroll(render); },
+
+  // 食事セット
+  setUse(el) {
+    const st = data.mealSets[Number(el.dataset.i)];
+    const list = ensureDay(state.day).meals[state.sheetMeal];
+    st.items.forEach(it => list.push({ name: it.name, kcal: it.kcal }));
+    save(); closeSheet(); keepScroll(render); toast('「' + st.name + '」を追加しました');
+  },
+  setFromMeal(el) {
+    const m = el.dataset.m;
+    const ml = MEALS.find(x => x[0] === m)[1];
+    const name = prompt('セットの名前を入力してください', 'いつもの' + ml);
+    if (name == null) return;
+    if (!name.trim()) { toast('名前を入力してください'); return; }
+    const items = data.days[state.day].meals[m].map(it => ({ name: it.name, kcal: it.kcal }));
+    data.mealSets.push({ name: name.trim(), items });
+    save(); toast('セット「' + name.trim() + '」を登録しました');
+  },
+  draftAdd() {
+    const name = document.getElementById('dn').value.trim();
+    const kcal = num(document.getElementById('dk').value);
+    if (!name) { toast('品名を入力してください'); return; }
+    if (kcal == null || kcal < 0 || kcal > 5000) { toast('kcalを数字で入力してください'); return; }
+    setDraft().items.push({ name, kcal: Math.round(kcal) });
+    keepScroll(render);
+  },
+  draftFav(el) {
+    const f = data.favorites[Number(el.dataset.i)];
+    setDraft().items.push({ name: f.name, kcal: f.kcal });
+    keepScroll(render);
+  },
+  draftDel(el) { setDraft().items.splice(Number(el.dataset.i), 1); keepScroll(render); },
+  setSave() {
+    const d = setDraft();
+    if (!d.name.trim()) { toast('セットの名前を入力してください'); return; }
+    if (!d.items.length) { toast('中身を1品以上入れてください'); return; }
+    data.mealSets.push({ name: d.name.trim(), items: d.items });
+    state.setDraft = null;
+    save(); keepScroll(render); toast('セットを保存しました');
+  },
+  setDel(el) {
+    const st = data.mealSets[Number(el.dataset.i)];
+    if (!confirm('セット「' + st.name + '」を削除しますか？（記録済みの食事は消えません）')) return;
+    data.mealSets.splice(Number(el.dataset.i), 1); save(); keepScroll(render);
+  },
   copyPrev() {
     const prev = data.days[addDays(state.day, -1)];
     if (!hasMeals(prev)) { toast('前日の食事の記録がありません'); return; }
@@ -994,6 +1084,7 @@ document.getElementById('sheet').addEventListener('click', ev => { if (ev.target
 // 入力欄の変更（体重・メモ、初回設定）
 document.addEventListener('input', ev => {
   const el = ev.target;
+  if (el.dataset.draft) setDraft()[el.dataset.draft] = el.value;
   if (el.dataset.setup) {
     setupValues()[el.dataset.setup] = el.value;
     const r = document.getElementById('setupResult');
