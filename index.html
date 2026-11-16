@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ダイエット記録</title>
+<!-- ホーム画面に追加したときの設定（PWA） -->
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" href="icons/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="ダイエット">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#2e9e6b">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header id="top"><h1 id="title">ダイエット記録</h1></header>
+
+<main id="view"></main>
+
+<!-- 画面下のタブ -->
+<nav id="tabs">
+  <button data-act="tab" data-tab="home"><span class="ti">📅</span>カレンダー</button>
+  <button data-act="tab" data-tab="graph"><span class="ti">📈</span>グラフ</button>
+  <button data-act="tab" data-tab="week"><span class="ti">📝</span>まとめ</button>
+  <button data-act="tab" data-tab="settings"><span class="ti">⚙️</span>設定</button>
+</nav>
+
+<!-- 下から出てくる小窓（よく食べるもの） -->
+<div id="sheet" class="hidden"></div>
+<div id="toast" class="hidden"></div>
+<input type="file" id="importFile" accept="application/json,.json" class="hidden">
+
+<script src="app.js"></script>
+</body>
+</html>
