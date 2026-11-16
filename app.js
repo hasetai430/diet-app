@@ -341,7 +341,7 @@ function renderSetup(first) {
     <div class="card">
       ${first ? '<h2>あなたの情報を入力してください</h2><p class="small">あとから設定画面で変更できます。データはこのiPhoneの中にだけ保存されます。</p>' : '<h2>基礎情報</h2>'}
       <label class="f">年齢</label>
-      <input type="number" inputmode="numeric" data-setup="age" value="${esc(v.age)}" placeholder="例：28">
+      <input type="number" inputmode="numeric" pattern="[0-9]*" data-setup="age" value="${esc(v.age)}" placeholder="例：28">
       <label class="f">性別</label>
       <div class="choices">
         <button class="choice ${v.sex === 'male' ? 'on' : ''}" data-act="setSex" data-v="male">男性</button>
@@ -448,7 +448,7 @@ function renderDay() {
       </ul>
       <div class="addrow">
         <input type="text" id="mn-${mk}" placeholder="品名">
-        <input type="number" inputmode="numeric" id="mk-${mk}" placeholder="kcal">
+        <input type="number" inputmode="numeric" pattern="[0-9]*" id="mk-${mk}" placeholder="kcal">
         <button class="btn" data-act="mealAdd" data-m="${mk}">追加</button>
       </div>
       <button class="btn sub" data-act="openFav" data-m="${mk}">★ よく食べるものから追加</button>`;
@@ -484,22 +484,25 @@ function renderDay() {
       <h2>🏃 運動</h2>
       <ul class="items">
         ${day.exercises.map((e, i) => `
-          <li><span class="nm">${esc(e.name)}　${e.minutes}分</span><span class="kc">${fmt(e.kcal)} kcal</span>
+          <li><span class="nm">${esc(e.name)}　${e.minutes}分</span><span class="kc">${fmt(e.kcal)} kcal${e.manual ? '' : '<br><span class="small">自動計算</span>'}</span>
             <button class="iconbtn" data-act="exDel" data-i="${i}" title="削除">×</button></li>`).join('')}
       </ul>
       <p class="small" style="margin:8px 0 6px">種類を選んでください</p>
       <div class="exgrid">
         ${exList.map((e, i) => `<button class="choice ${state.exSel === i ? 'on' : ''}" data-act="exSel" data-i="${i}">${esc(e.name)}<span class="ex">${e.mets} METs</span></button>`).join('')}
       </div>
-      <label class="f">時間（分）</label>
-      <div class="row">
-        <input type="number" inputmode="numeric" id="exMin" placeholder="例：30">
-        <button class="btn" data-act="exAdd" style="flex:none;width:96px">追加</button>
+      <div class="row" style="margin-top:10px">
+        <div><label class="f" style="margin-top:0">時間（分）</label>
+          <input type="number" inputmode="numeric" pattern="[0-9]*" id="exMin" placeholder="例：30"></div>
+        <div><label class="f" style="margin-top:0">消費kcal <span class="small">（任意）</span></label>
+          <input type="number" inputmode="numeric" pattern="[0-9]*" id="exKcalIn" placeholder="自動計算"></div>
       </div>
-      <p class="small">${sel ? `${esc(sel.name)}：30分で約${fmt(exKcal(sel.mets, w, 30))}kcal（体重${fmt1(w)}kgで計算）` : '消費kcal＝METs×体重×時間×1.05 で自動計算します。METs＝安静時の何倍のエネルギーを使うかの値です。'}</p>
+      <p class="small">Nike Run Club など、ほかのアプリに表示された消費kcalがあれば入力してください。空欄なら自動で計算します。</p>
+      <button class="btn" data-act="exAdd">運動を追加</button>
+      <p class="small">${sel ? `${esc(sel.name)}：30分で約${fmt(exKcal(sel.mets, w, 30))}kcal（体重${fmt1(w)}kgで計算）` : '自動計算は「METs×体重×時間×1.05」です。METs＝安静時の何倍のエネルギーを使うかの値です。'}</p>
       <label class="f">歩数</label>
       <div class="row">
-        <input type="number" inputmode="numeric" data-field="steps" value="${day.steps != null ? day.steps : ''}" placeholder="例：8000">
+        <input type="number" inputmode="numeric" pattern="[0-9]*" data-field="steps" value="${day.steps != null ? day.steps : ''}" placeholder="例：8000">
         <span style="flex:none">歩</span>
       </div>
       <p class="small">iPhoneの「ヘルスケア」アプリで歩数を確認できます。</p>
@@ -879,8 +882,14 @@ const actions = {
     if (!e) { toast('運動の種類を選んでください'); return; }
     const min = num(document.getElementById('exMin').value);
     if (min == null || min <= 0 || min > 600) { toast('時間（分）を入力してください'); return; }
+    // 消費kcalが入力されていればその値を使い、空欄なら自動計算
+    const kcalRaw = document.getElementById('exKcalIn').value.trim();
+    const kcalIn = num(kcalRaw);
+    if (kcalRaw !== '' && (kcalIn == null || kcalIn < 0 || kcalIn > 5000)) { toast('消費kcalを数字で入力してください'); return; }
     const w = currentWeight(state.day);
-    ensureDay(state.day).exercises.push({ name: e.name, mets: e.mets, cat: e.cat, minutes: Math.round(min), kcal: exKcal(e.mets, w, min) });
+    const item = { name: e.name, mets: e.mets, cat: e.cat, minutes: Math.round(min), kcal: kcalIn != null ? Math.round(kcalIn) : exKcal(e.mets, w, min) };
+    if (kcalIn != null) item.manual = true;
+    ensureDay(state.day).exercises.push(item);
     state.exSel = null;
     save(); keepScroll(render); toast('追加しました');
   },
