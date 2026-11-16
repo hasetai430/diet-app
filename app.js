@@ -86,7 +86,7 @@ function toast(msg) {
 
 // ===== 1日のデータ =====
 function emptyDay() {
-  return { meals: { breakfast: [], lunch: [], dinner: [], snack: [] }, exercises: [], steps: null, weight: null, memo: '' };
+  return { meals: { breakfast: [], lunch: [], dinner: [], snack: [] }, exercises: [], weight: null, memo: '' };
 }
 function ensureDay(k) { if (!data.days[k]) data.days[k] = emptyDay(); return data.days[k]; }
 function hasMeals(day) { return !!day && MEALS.some(([m]) => day.meals[m].length > 0); }
@@ -95,7 +95,7 @@ function intake(day) {
   return MEALS.reduce((s, [m]) => s + day.meals[m].reduce((a, it) => a + it.kcal, 0), 0);
 }
 function hasRecord(day) {
-  return !!day && (hasMeals(day) || day.exercises.length > 0 || day.weight != null || day.steps != null || (day.memo || '') !== '');
+  return !!day && (hasMeals(day) || day.exercises.length > 0 || day.weight != null || (day.memo || '') !== '');
 }
 // 空になった日は消して、データを小さく保つ
 function tidyDay(k) { if (data.days[k] && !hasRecord(data.days[k])) delete data.days[k]; }
@@ -163,8 +163,8 @@ function avgWeight(endKey, n) {
 function weekStats(start) {
   const keys = [];
   for (let i = 0; i < 7; i++) keys.push(addDays(start, i));
-  let kcalSum = 0, kcalDays = 0, exMin = 0, exKcalSum = 0, stepSum = 0, stepDays = 0, recDays = 0;
-  let actMin = 0, vigMin = 0, strengthDays = 0;
+  let kcalSum = 0, kcalDays = 0, exMin = 0, exKcalSum = 0, recDays = 0;
+  let vigMin = 0, strengthDays = 0;
   const weights = [];
   for (const k of keys) {
     const d = data.days[k];
@@ -174,19 +174,16 @@ function weekStats(start) {
     let st = false;
     for (const e of d.exercises) {
       exMin += e.minutes; exKcalSum += e.kcal;
-      if (e.mets >= 3) actMin += e.minutes;
       if (e.cat === 'exercise') vigMin += e.minutes;
       if (e.cat === 'strength') st = true;
     }
     if (st) strengthDays++;
-    if (d.steps != null) { stepSum += d.steps; stepDays++; }
     if (d.weight != null) weights.push(d.weight);
   }
   const avgW = weights.length ? weights.reduce((a, b) => a + b, 0) / weights.length : null;
   return {
-    keys, recDays, kcalDays, exMin, exKcal: exKcalSum, actMin, vigMin, strengthDays, stepDays,
+    keys, recDays, kcalDays, exMin, exKcal: exKcalSum, vigMin, strengthDays,
     avgKcal: kcalDays ? kcalSum / kcalDays : null,
-    avgSteps: stepDays ? stepSum / stepDays : null,
     avgW
   };
 }
@@ -230,14 +227,7 @@ function makeAdvice() {
   // 4) 運動量を国の目安と比べる（直近7日）
   const w = weekStats(addDays(t, -6));
   const lack = [];
-  if (w.avgSteps != null) {
-    if (w.avgSteps < 8000) {
-      const gap = 8000 - w.avgSteps;
-      lack.push(`歩数：1日平均${fmt(w.avgSteps)}歩。目安の約8,000歩まで、あと約${fmt(Math.ceil(gap / 100) * 100)}歩（歩いて約${fmt(Math.ceil(gap / 100))}分）増やしましょう。`);
-    }
-  } else if (w.actMin / 7 < 60) {
-    lack.push(`日常の活動：歩行相当以上の活動が1日平均${fmt(w.actMin / 7)}分です。目安は1日60分（約8,000歩）。歩数を入力すると、より正確に判定できます。`);
-  }
+  // 日常の歩行（1日60分・約8,000歩）は歩数を記録しないため判定しない
   if (w.vigMin < 60) {
     lack.push(`息が弾む運動：週${fmt(w.vigMin)}分。目安の週60分まで、あと${fmt(60 - w.vigMin)}分（例：速歩きやジョギングを${fmt(Math.ceil((60 - w.vigMin) / 20))}回×20分）。`);
   }
@@ -247,7 +237,7 @@ function makeAdvice() {
   if (lack.length) {
     list.push({ lv: 'warn', title: '運動の目安との差（直近7日）', text: lack.join('<br>') });
   } else {
-    list.push({ lv: 'good', title: '運動の目安を達成しています', text: '歩行・息が弾む運動・筋トレのすべてで、国の目安を満たしています。すばらしいです。' });
+    list.push({ lv: 'good', title: '運動の目安を達成しています', text: '息が弾む運動（週60分以上）と筋トレ（週2回以上）の目安を満たしています。すばらしいです。' });
   }
 
   // 5) 食事が目標どおりの日が多ければ褒める
@@ -492,10 +482,13 @@ function renderDay() {
           <li><span class="nm">${esc(e.name)}　${e.minutes}分</span><span class="kc">${fmt(e.kcal)} kcal${e.manual ? '' : '<br><span class="small">自動計算</span>'}</span>
             <button class="iconbtn" data-act="exDel" data-i="${i}" title="削除">×</button></li>`).join('')}
       </ul>
-      <p class="small" style="margin:8px 0 6px">種類を選んでください</p>
-      <div class="exgrid">
+      <p class="small" style="margin:8px 0 6px">種類を選んでください（運動の目安の判定に使います）</p>
+      <div class="exgrid" id="exGrid">
         ${exList.map((e, i) => `<button class="choice ${state.exSel === i ? 'on' : ''}" data-act="exSel" data-i="${i}">${esc(e.name)}<span class="ex">${e.mets} METs</span></button>`).join('')}
       </div>
+      <label class="f">運動の名前 <span class="small">（任意）</span></label>
+      <input type="text" id="exName" placeholder="例：朝ラン 5km">
+      <p class="small">空欄なら、選んだ種類の名前で記録します。</p>
       <div class="row" style="margin-top:10px">
         <div><label class="f" style="margin-top:0">時間（分）</label>
           <input type="number" inputmode="numeric" pattern="[0-9]*" id="exMin" placeholder="例：30"></div>
@@ -504,13 +497,7 @@ function renderDay() {
       </div>
       <p class="small">Nike Run Club など、ほかのアプリに表示された消費kcalがあれば入力してください。空欄なら自動で計算します。</p>
       <button class="btn" data-act="exAdd">運動を追加</button>
-      <p class="small">${sel ? `${esc(sel.name)}：30分で約${fmt(exKcal(sel.mets, w, 30))}kcal（体重${fmt1(w)}kgで計算）` : '自動計算は「METs×体重×時間×1.05」です。METs＝安静時の何倍のエネルギーを使うかの値です。'}</p>
-      <label class="f">歩数</label>
-      <div class="row">
-        <input type="number" inputmode="numeric" pattern="[0-9]*" data-field="steps" value="${day.steps != null ? day.steps : ''}" placeholder="例：8000">
-        <span style="flex:none">歩</span>
-      </div>
-      <p class="small">iPhoneの「ヘルスケア」アプリで歩数を確認できます。</p>
+      <p class="small" id="exHint">${exHint(sel, w)}</p>
     </div>
 
     <div class="card">
@@ -519,6 +506,13 @@ function renderDay() {
     </div>
 
     <button class="btn line" data-act="closeDay">カレンダーに戻る</button>`;
+}
+
+// 運動の種類を選んだときの説明文
+function exHint(sel, w) {
+  return sel
+    ? `${esc(sel.name)}：30分で約${fmt(exKcal(sel.mets, w, 30))}kcal（体重${fmt1(w)}kgで計算）`
+    : '自動計算は「METs×体重×時間×1.05」です。METs＝安静時の何倍のエネルギーを使うかの値です。';
 }
 
 // ===== グラフ（自作） =====
@@ -686,7 +680,7 @@ function renderWeek() {
         <div class="stat"><div class="lb">7日平均体重</div><div class="vl">${st.avgW != null ? fmt1(st.avgW) : '—'} <small>kg</small></div></div>
         <div class="stat"><div class="lb">前週との差</div><div class="vl">${wDiff != null ? sign1(wDiff) : '—'} <small>kg</small></div></div>
         <div class="stat"><div class="lb">記録できた日</div><div class="vl">${st.recDays} <small>／7日</small></div></div>
-        <div class="stat"><div class="lb">平均歩数</div><div class="vl">${st.avgSteps != null ? fmt(st.avgSteps) : '—'} <small>歩</small></div></div>
+        <div class="stat"><div class="lb">筋トレ</div><div class="vl">${st.strengthDays} <small>回（目安 週2〜3回）</small></div></div>
       </div>
       <button class="btn" data-act="copySummary">まとめをコピー</button>
       <p class="small">コピーした文章を、Claudeのチャットに貼り付けて相談できます。</p>
@@ -709,7 +703,6 @@ function summaryText() {
   lines.push('');
   lines.push(`・平均摂取kcal：${st.avgKcal != null ? fmt(st.avgKcal) + 'kcal（食事記録' + st.kcalDays + '日分）' : '記録なし'}`);
   lines.push(`・運動の合計：${fmt(st.exMin)}分（消費${fmt(st.exKcal)}kcal、息が弾む運動${fmt(st.vigMin)}分、筋トレ${st.strengthDays}回）`);
-  lines.push(`・平均歩数：${st.avgSteps != null ? fmt(st.avgSteps) + '歩' : '記録なし'}`);
   lines.push(`・7日平均体重：${st.avgW != null ? fmt1(st.avgW) + 'kg' : '記録なし'}${st.avgW != null && prev.avgW != null ? '（前週との差 ' + sign1(st.avgW - prev.avgW) + 'kg）' : ''}`);
   lines.push(`・記録できた日：${st.recDays}／7日`);
   lines.push('');
@@ -720,7 +713,6 @@ function summaryText() {
     const parts = [];
     parts.push(hasMeals(d) ? `摂取${fmt(intake(d))}kcal` : '食事未入力');
     if (d.exercises.length) parts.push('運動 ' + d.exercises.map(x => `${x.name}${x.minutes}分`).join('・'));
-    if (d.steps != null) parts.push(`${fmt(d.steps)}歩`);
     if (d.weight != null) parts.push(`体重${fmt1(d.weight)}kg`);
     if (d.memo) parts.push(`メモ「${d.memo.replace(/\n/g, ' ')}」`);
     lines.push(`${jpDate(k)} ${parts.join('／')}`);
@@ -896,7 +888,12 @@ const actions = {
   },
 
   // 運動
-  exSel(el) { state.exSel = Number(el.dataset.i); keepScroll(render); },
+  // 種類を選ぶ（入力途中の名前や数字が消えないよう、画面は描き直さない）
+  exSel(el) {
+    state.exSel = Number(el.dataset.i);
+    document.querySelectorAll('#exGrid .choice').forEach(b => b.classList.toggle('on', b === el));
+    document.getElementById('exHint').innerHTML = exHint(allExercises()[state.exSel], currentWeight(state.day));
+  },
   exAdd() {
     const e = state.exSel != null ? allExercises()[state.exSel] : null;
     if (!e) { toast('運動の種類を選んでください'); return; }
@@ -907,7 +904,8 @@ const actions = {
     const kcalIn = num(kcalRaw);
     if (kcalRaw !== '' && (kcalIn == null || kcalIn < 0 || kcalIn > 5000)) { toast('消費kcalを数字で入力してください'); return; }
     const w = currentWeight(state.day);
-    const item = { name: e.name, mets: e.mets, cat: e.cat, minutes: Math.round(min), kcal: kcalIn != null ? Math.round(kcalIn) : exKcal(e.mets, w, min) };
+    const customName = document.getElementById('exName').value.trim();
+    const item = { name: customName || e.name, mets: e.mets, cat: e.cat, minutes: Math.round(min), kcal: kcalIn != null ? Math.round(kcalIn) : exKcal(e.mets, w, min) };
     if (kcalIn != null) item.manual = true;
     ensureDay(state.day).exercises.push(item);
     state.exSel = null;
@@ -993,7 +991,7 @@ document.addEventListener('click', ev => {
 // 小窓の外側を押したら閉じる
 document.getElementById('sheet').addEventListener('click', ev => { if (ev.target.id === 'sheet') closeSheet(); });
 
-// 入力欄の変更（体重・歩数・メモ、初回設定）
+// 入力欄の変更（体重・メモ、初回設定）
 document.addEventListener('input', ev => {
   const el = ev.target;
   if (el.dataset.setup) {
@@ -1010,10 +1008,8 @@ document.addEventListener('change', ev => {
     if (f === 'memo') day.memo = el.value.trim();
     else {
       const v = num(el.value);
-      if (f === 'weight') {
-        if (v != null && (v < 30 || v > 250)) { toast('体重の値を確認してください'); return; }
-        day.weight = v != null ? Math.round(v * 10) / 10 : null;
-      } else day.steps = v != null && v >= 0 ? Math.round(v) : null;
+      if (v != null && (v < 30 || v > 250)) { toast('体重の値を確認してください'); return; }
+      day.weight = v != null ? Math.round(v * 10) / 10 : null;
     }
     tidyDay(state.day); save();
     if (f !== 'memo') keepScroll(render);

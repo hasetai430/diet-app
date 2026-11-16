@@ -1,6 +1,6 @@
 // オフラインでも動くようにする仕組み（サービスワーカー）
 // ファイルを更新したら、下の番号を1つ上げる
-const CACHE = 'diet-app-v3';
+const CACHE = 'diet-app-v4';
 const FILES = [
   './', './index.html', './style.css', './app.js', './manifest.json',
   './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png'
