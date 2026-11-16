@@ -129,7 +129,10 @@ function calcPlan(p, w) {
   const bmi = calcBmi(w, p.height);
   const bmr = calcBmr(p, w);
   const tdee = bmr * ACTIVITY[p.activity].factor;
-  let target = tdee - 500;
+  // 自動計算の目標（消費量−500、基礎代謝が下限）に、自分で決めた調整分を足す
+  const auto = Math.round(Math.max(tdee - 500, bmr));
+  const adjust = p.kcalAdjust || 0;
+  let target = tdee - 500 + adjust;
   let clamped = false;
   if (target < bmr) { target = bmr; clamped = true; }
   target = Math.round(target);
@@ -139,7 +142,7 @@ function calcPlan(p, w) {
     const days = Math.ceil((w - p.goalWeight) * KCAL_PER_KG / deficit);
     eta = { days, date: addDays(todayKey(), days) };
   }
-  return { bmi, cls: bmiClass(bmi), bmr: Math.round(bmr), tdee: Math.round(tdee), target, clamped, deficit, eta, reached: w <= p.goalWeight };
+  return { bmi, cls: bmiClass(bmi), bmr: Math.round(bmr), tdee: Math.round(tdee), target, auto, adjust, clamped, deficit, eta, reached: w <= p.goalWeight };
 }
 function planFor(k) { return calcPlan(data.profile, currentWeight(k)); }
 function exKcal(mets, w, minutes) { return Math.round(mets * w * (minutes / 60) * 1.05); }
@@ -221,7 +224,7 @@ function makeAdvice() {
   // 3) 2週間ほぼ変わらない（±0.2kg以内）
   if (a != null && b != null && c != null && Math.abs(a - c) <= 0.2 && Math.abs(a - b) <= 0.2 && a > p.goalWeight) {
     const lower = Math.max(plan.bmr, plan.target - 150);
-    list.push({ lv: 'warn', title: '体重が2週間ほぼ横ばいです', text: `目標kcalを100〜200kcal下げる（例：${fmt(plan.target)}→${fmt(lower)}kcal）か、運動を増やしてみましょう。基礎代謝（${fmt(plan.bmr)}kcal）は下回らないようにします。` });
+    list.push({ lv: 'warn', title: '体重が2週間ほぼ横ばいです', text: `目標kcalを100〜200kcal下げる（例：${fmt(plan.target)}→${fmt(lower)}kcal）か、運動を増やしてみましょう。基礎代謝（${fmt(plan.bmr)}kcal）は下回らないようにします。<br>目標kcalは「設定」→「目標kcalの調整」で変更できます。` });
   }
 
   // 4) 運動量を国の目安と比べる（直近7日）
@@ -309,7 +312,9 @@ function validProfile(v) {
   if (!(w >= 30 && w <= 250)) return null;
   if (!(g >= 30 && g <= 250)) return null;
   if (!v.sex || !v.activity) return null;
-  return { age, sex: v.sex, height: h, weight: w, activity: v.activity, goalWeight: g };
+  // 目標kcalの調整分は、基礎情報を変えても引き継ぐ
+  const kcalAdjust = data.profile ? (data.profile.kcalAdjust || 0) : 0;
+  return { age, sex: v.sex, height: h, weight: w, activity: v.activity, goalWeight: g, kcalAdjust };
 }
 function resultHtml(v) {
   const p = validProfile(v);
@@ -327,10 +332,10 @@ function resultHtml(v) {
       <tr><td>BMI</td><td>${fmt1(r.bmi)}（${r.cls}）</td></tr>
       <tr><td>基礎代謝<br><span class="small">何もしなくても使うkcal</span></td><td>${fmt(r.bmr)} kcal</td></tr>
       <tr><td>1日の推定消費量<br><span class="small">基礎代謝×${ACTIVITY[p.activity].factor}</span></td><td>${fmt(r.tdee)} kcal</td></tr>
-      <tr><td>目標摂取kcal<br><span class="small">消費量−500kcal</span></td><td>${fmt(r.target)} kcal</td></tr>
+      <tr><td>目標摂取kcal<br><span class="small">消費量−500kcal${r.adjust ? `（調整 ${r.adjust > 0 ? '+' : '−'}${Math.abs(r.adjust)}）` : ''}</span></td><td>${fmt(r.target)} kcal</td></tr>
       <tr><td>目標達成の目安</td><td>${eta}</td></tr>
     </table>
-    ${r.clamped ? '<p class="small">※ 消費量−500kcal が基礎代謝を下回るため、基礎代謝と同じ値にしています。</p>' : ''}
+    ${r.clamped ? '<p class="small">※ 計算した目標が基礎代謝を下回るため、基礎代謝と同じ値にしています。</p>' : ''}
     ${goalBmi < 18.5 ? `<p class="small" style="color:var(--bad)">※ 目標体重はBMI ${fmt1(goalBmi)}（低体重）です。目標を見直すことをおすすめします。</p>` : ''}
     <p class="small">体脂肪1kg＝約7,200kcal として計算した目安です。</p>`;
 }
@@ -700,7 +705,7 @@ function summaryText() {
   const lines = [];
   lines.push(`【ダイエットの週まとめ】${md(s)}〜${md(e)}`);
   lines.push(`基本情報：${p.age}歳・${p.sex === 'male' ? '男性' : '女性'}・身長${p.height}cm・活動量「${ACTIVITY[p.activity].label}」・目標体重${p.goalWeight}kg`);
-  lines.push(`基礎代謝${fmt(plan.bmr)}kcal／推定消費量${fmt(plan.tdee)}kcal／目標摂取${fmt(plan.target)}kcal`);
+  lines.push(`基礎代謝${fmt(plan.bmr)}kcal／推定消費量${fmt(plan.tdee)}kcal／目標摂取${fmt(plan.target)}kcal${plan.adjust ? `（自動計算${fmt(plan.auto)}kcalから${plan.adjust > 0 ? '+' : '−'}${Math.abs(plan.adjust)}kcal調整）` : ''}`);
   lines.push('');
   lines.push(`・平均摂取kcal：${st.avgKcal != null ? fmt(st.avgKcal) + 'kcal（食事記録' + st.kcalDays + '日分）' : '記録なし'}`);
   lines.push(`・運動の合計：${fmt(st.exMin)}分（消費${fmt(st.exKcal)}kcal、息が弾む運動${fmt(st.vigMin)}分、筋トレ${st.strengthDays}回）`);
@@ -764,6 +769,21 @@ function renderSettings() {
         <tr><td>目標摂取kcal</td><td>${fmt(plan.target)} kcal</td></tr>
       </table>
       <button class="btn sub" data-act="editSetup">基礎情報を変更する</button>
+    </div>
+
+    <div class="card">
+      <h2>🎯 目標kcalの調整</h2>
+      <table class="result">
+        <tr><td>自動計算の目標</td><td>${fmt(plan.auto)} kcal</td></tr>
+        <tr><td>調整</td><td>${p.kcalAdjust ? (p.kcalAdjust > 0 ? '+' : '−') + Math.abs(p.kcalAdjust) : '±0'} kcal</td></tr>
+        <tr><td>今の目標</td><td style="color:var(--main)">${fmt(plan.target)} kcal</td></tr>
+      </table>
+      <div class="choices" style="grid-template-columns:repeat(4,1fr);margin-top:10px">
+        ${[-100, -50, 50, 100].map(d => `<button class="choice" style="text-align:center;font-weight:700" data-act="adj" data-d="${d}">${d > 0 ? '+' : '−'}${Math.abs(d)}</button>`).join('')}
+      </div>
+      <button class="btn line" data-act="adjReset">自動計算に戻す</button>
+      ${plan.clamped ? `<p class="small" style="color:var(--warn)">※ 基礎代謝（${fmt(plan.bmr)}kcal）より下には設定できません。</p>` : ''}
+      <p class="small">体重が2週間横ばいのときは、100〜200kcal下げるのが目安です。調整は−500〜+300kcalの範囲でできます。</p>
     </div>
 
     <div class="card">
@@ -932,6 +952,19 @@ const actions = {
     save(); keepScroll(render); toast('追加しました');
   },
   cxDel(el) { data.customExercises.splice(Number(el.dataset.i), 1); save(); keepScroll(render); },
+
+  // 目標kcalの調整（基礎代謝より下には下げない）
+  adj(el) {
+    const p = data.profile;
+    const d = Number(el.dataset.d);
+    const plan = planFor(todayKey());
+    if (d < 0 && plan.clamped) { toast('基礎代謝より下には設定できません'); return; }
+    const next = Math.max(-500, Math.min(300, (p.kcalAdjust || 0) + d));
+    if (next === (p.kcalAdjust || 0)) { toast('これ以上は調整できません'); return; }
+    p.kcalAdjust = next;
+    save(); keepScroll(render); toast('目標を ' + fmt(planFor(todayKey()).target) + ' kcal にしました');
+  },
+  adjReset() { data.profile.kcalAdjust = 0; save(); keepScroll(render); toast('自動計算に戻しました'); },
 
   // バックアップ
   export() {
